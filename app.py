@@ -853,7 +853,8 @@ def show_quiz_screen():
     
     current_question = st.session_state.current_quiz_question
     
-    # 問題表示
+    # 問題表示を最初に配置（重要：これが画面の最上部に来る）
+    st.markdown("---")
     ui.render_question_display(
         question_text=current_question.question_text,
         poem_number=current_question.poem_number,
@@ -862,6 +863,9 @@ def show_quiz_screen():
     
     # 回答済みでない場合
     if not st.session_state.answered:
+        # 回答選択エリア
+        st.markdown("### 📝 回答を選択してください")
+        
         selected_choice = ui.render_choice_buttons(
             choices=current_question.choices,
             answered=False
@@ -871,6 +875,7 @@ def show_quiz_screen():
             st.session_state.user_answer = selected_choice
         
         # 回答ボタン
+        st.markdown("---")
         button_action = ui.render_answer_buttons(
             enable_hint=quiz_session.settings.enable_hints and not st.session_state.hint_used,
             enable_skip=True
@@ -942,6 +947,9 @@ def show_quiz_screen():
     
     # 回答済みの場合
     else:
+        # 結果表示エリア
+        st.markdown("### 📊 回答結果")
+        
         # 選択肢を結果表示モードで表示
         ui.render_choice_buttons(
             choices=current_question.choices,
@@ -954,6 +962,7 @@ def show_quiz_screen():
             result = st.session_state.current_answer_result
             
             # 結果表示
+            st.markdown("---")
             ui.render_answer_result(
                 is_correct=result.is_correct,
                 user_answer=result.user_answer if result.user_answer else "未回答",
@@ -964,6 +973,7 @@ def show_quiz_screen():
             )
             
             # 次へ進むボタン
+            st.markdown("---")
             if ui.render_next_question_button(is_last_question=(answered_count + 1 >= total_questions)):
                 # 状態をリセット
                 st.session_state.current_quiz_question = None
@@ -982,8 +992,15 @@ def show_quiz_screen():
                         # エラーの場合は直接遷移
                         navigate_with_transition('result', TransitionType.FADE)
                 else:
-                    # 次の問題へ
-                    screen_manager.navigate_to_next_question()
+                    # 次の問題へ（画面トップへのスクロール指示を含む）
+                    try:
+                        screen_manager.navigate_to_next_question()
+                    except:
+                        pass
+                
+                # ページトップへスクロールするフラグを設定
+                if 'scroll_to_top' not in st.session_state:
+                    st.session_state.scroll_to_top = True
                 
                 st.rerun()
     
@@ -994,6 +1011,15 @@ def show_quiz_screen():
         if st.button("🚪 クイズを中断", type="secondary"):
             if screen_manager.handle_quiz_interruption():
                 st.rerun()
+    
+    # JavaScriptでページトップへスクロール（新しい問題の場合）
+    if 'scroll_to_top' in st.session_state and st.session_state.scroll_to_top:
+        st.markdown("""
+        <script>
+        window.scrollTo(0, 0);
+        </script>
+        """, unsafe_allow_html=True)
+        st.session_state.scroll_to_top = False
 
 def show_result_screen():
     """結果画面（通常版）"""
