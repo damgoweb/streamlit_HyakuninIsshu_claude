@@ -907,27 +907,28 @@ def show_quiz_screen():
     current_question = st.session_state.current_quiz_question
     
     # ========================================
-    # レイアウト：問題文 → ヘッダー → 選択肢の順
+    # レイアウト：問題文 → 選択肢の順（ヘッダーは削除）
     # ========================================
     
-    # 1. まず問題文を表示（これが最上部）
+    # 1. 進捗情報をシンプルに表示
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.write(f"**問題 {answered_count + 1} / {total_questions}**")
+    with col2:
+        st.write(f"**スコア: {validator_stats['correct_answers']}点**")
+    with col3:
+        st.write(f"**正答率: {validator_stats['accuracy']:.0f}%**")
+    
+    # 2. 問題文を表示（これがメイン）
+    st.markdown("---")
     ui.render_question_display(
         question_text=current_question.question_text,
         poem_number=current_question.poem_number,
         additional_info=f"問題タイプ: {current_question.quiz_type.value}"
     )
-    
-    # 2. その後にヘッダー（進捗）を表示
-    ui.render_quiz_header(
-        current_question=answered_count + 1,
-        total_questions=total_questions,
-        score=validator_stats['correct_answers'],
-        accuracy=validator_stats['accuracy']
-    )
-    
     st.markdown("---")
     
-    # 3. 回答エリア
+    # 3. 回答エリア（ヘッダーなし、直接選択肢へ）
     if not st.session_state.answered:
         # 回答前の表示
         selected_choice = ui.render_choice_buttons(
