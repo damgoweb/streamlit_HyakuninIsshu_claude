@@ -119,6 +119,14 @@ def initialize_session():
         st.session_state.user_answers = []
         st.session_state.answered = False
         st.session_state.selected_answer = None
+        # 通常版でも必要な変数を初期化
+        st.session_state.data_manager = None
+        st.session_state.quiz_generator = None
+        st.session_state.answer_validator = None
+        st.session_state.current_quiz_question = None
+        st.session_state.question_start_time = None
+        st.session_state.user_answer = None
+        st.session_state.hint_used = False
         
     if modules_available:
         # 通常版の初期化
@@ -128,15 +136,6 @@ def initialize_session():
         
         if 'ui_components' not in st.session_state:
             st.session_state.ui_components = create_ui_components(UITheme.DEFAULT)
-        
-        if 'data_manager' not in st.session_state:
-            st.session_state.data_manager = None
-            st.session_state.quiz_generator = None
-            st.session_state.answer_validator = None
-            st.session_state.current_quiz_question = None
-            st.session_state.question_start_time = None
-            st.session_state.user_answer = None
-            st.session_state.hint_used = False
             
         if not screen_manager.get_current_screen():
             screen_manager.navigate_to('start')
@@ -155,11 +154,20 @@ def load_app_data():
             data = json.load(f)
             st.session_state.poems_data = data
             
-            if modules_available and 'data_manager' in st.session_state:
+            if modules_available:
                 # DataManagerの初期化
-                st.session_state.data_manager = DataManager()
-                st.session_state.quiz_generator = QuizGenerator(data)
-                st.session_state.answer_validator = AnswerValidator()
+                if 'data_manager' not in st.session_state or st.session_state.data_manager is None:
+                    st.session_state.data_manager = DataManager()
+                    
+                if 'quiz_generator' not in st.session_state or st.session_state.quiz_generator is None:
+                    st.session_state.quiz_generator = QuizGenerator(data)
+                    
+                if 'answer_validator' not in st.session_state or st.session_state.answer_validator is None:
+                    st.session_state.answer_validator = AnswerValidator()
+                
+                # DataManagerにデータをロード
+                if hasattr(st.session_state.data_manager, 'load_poem_data'):
+                    st.session_state.data_manager.load_poem_data()
                 
             return True, f"✅ {len(data)}首の歌を読み込みました"
     except FileNotFoundError:
@@ -788,6 +796,10 @@ def show_quiz_screen():
             st.rerun()
         return
     
+    # answer_validatorの確認
+    if not st.session_state.answer_validator:
+        st.session_state.answer_validator = AnswerValidator()
+    
     # 進捗情報取得
     validator_stats = st.session_state.answer_validator.get_current_score()
     answered_count = validator_stats['total_questions']
@@ -815,6 +827,10 @@ def show_quiz_screen():
             screen_manager.complete_quiz()
             st.rerun()
         return
+    
+    # current_quiz_questionが存在しない場合は初期化
+    if 'current_quiz_question' not in st.session_state:
+        st.session_state.current_quiz_question = None
     
     # 現在の問題を取得または生成
     if st.session_state.current_quiz_question is None:
