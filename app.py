@@ -907,7 +907,7 @@ def show_quiz_screen():
     current_question = st.session_state.current_quiz_question
     
     # ========================================
-    # レイアウト：問題文 → 選択肢の順（ヘッダーは削除）
+    # レイアウト：問題文を直接表示
     # ========================================
     
     # 1. 進捗情報をシンプルに表示
@@ -919,16 +919,13 @@ def show_quiz_screen():
     with col3:
         st.write(f"**正答率: {validator_stats['accuracy']:.0f}%**")
     
-    # 2. 問題文を表示（これがメイン）
+    # 2. 問題文を直接大きく表示（UIコンポーネントを使わない）
     st.markdown("---")
-    ui.render_question_display(
-        question_text=current_question.question_text,
-        poem_number=current_question.poem_number,
-        additional_info=f"問題タイプ: {current_question.quiz_type.value}"
-    )
+    st.markdown(f"# {current_question.question_text}")
+    st.caption(f"問題タイプ: {current_question.quiz_type.value} / {current_question.poem_number}番の歌")
     st.markdown("---")
     
-    # 3. 回答エリア（ヘッダーなし、直接選択肢へ）
+    # 3. 回答エリア
     if not st.session_state.answered:
         # 回答前の表示
         selected_choice = ui.render_choice_buttons(
