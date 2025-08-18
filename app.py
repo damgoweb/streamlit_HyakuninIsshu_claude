@@ -81,7 +81,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.write("ここにアプリ本体が続きます。")
+
 
 # クイズモードのマッピング
 QUIZ_MODE_MAPPING = {
