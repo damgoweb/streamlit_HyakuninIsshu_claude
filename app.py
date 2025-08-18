@@ -805,30 +805,29 @@ def show_quiz_screen():
     answered_count = validator_stats['total_questions']
     total_questions = quiz_session.settings.total_questions
     
-    # ヘッダー表示（部分更新）
-    optimized_update('quiz_header',
-                    lambda: ui.render_quiz_header(
-                        current_question=answered_count + 1,
-                        total_questions=total_questions,
-                        score=validator_stats['correct_answers'],
-                        accuracy=validator_stats['accuracy']
-                    ),
-                    data={'count': answered_count, 'score': validator_stats['correct_answers']},
-                    strategy=UpdateStrategy.PARTIAL)
-    
     # クイズが完了している場合
     if answered_count >= total_questions:
+        # ヘッダー表示
+        optimized_update('quiz_header',
+                        lambda: ui.render_quiz_header(
+                            current_question=answered_count,
+                            total_questions=total_questions,
+                            score=validator_stats['correct_answers'],
+                            accuracy=validator_stats['accuracy']
+                        ),
+                        data={'count': answered_count, 'score': validator_stats['correct_answers']},
+                        strategy=UpdateStrategy.PARTIAL)
+        
         ui.render_success_message("クイズ完了！", show_balloons=True)
         
         performance = st.session_state.answer_validator.get_statistics().get_performance_analysis()
         st.info(f"🏆 最終成績: {performance['overall_grade']}")
         
         if ui.render_next_question_button(is_last_question=True):
-            # 結果画面へ遷移（complete_quiz()がエラーになる可能性があるため直接遷移）
+            # 結果画面へ遷移
             try:
                 screen_manager.navigate_to('result')
             except:
-                # エラーの場合は直接遷移
                 navigate_with_transition('result', TransitionType.FADE)
             st.rerun()
         return
@@ -846,135 +845,203 @@ def show_quiz_screen():
             st.session_state.user_answer = None
             st.session_state.question_start_time = time.time()
             st.session_state.hint_used = False
-            screen_manager.mark_screen_dirty('quiz')
+            try:
+                screen_manager.mark_screen_dirty('quiz')
+            except:
+                pass
         else:
             ui.render_error_message("問題を生成できませんでした")
             return
     
     current_question = st.session_state.current_quiz_question
     
-    # 問題表示を最初に配置（重要：これが画面の最上部に来る）
+    # ===== レイアウト開始：問題文を最初に大きく表示 =====
+    
+    # 1. 問題番号とスコア（コンパクトに上部に配置）
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown(f"### 📖 問題 {answered_count + 1} / {total_questions}")
+    with col2:
+        st.metric("スコア", f"{validator_stats['correct_answers']}/{answered_count}")
+    with col3:
+        accuracy = validator_stats['accuracy']
+        st.metric("正答率", f"{accuracy:.0f}%")
+    
+    # 2. 問題文を大きく表示（最重要要素として）
     st.markdown("---")
-    ui.render_question_display(
-        question_text=current_question.question_text,
-        poem_number=current_question.poem_number,
-        additional_info=f"問題タイプ: {current_question.quiz_type.value}"
-    )
     
-    # 回答済みでない場合
+    # 問題文コンテナ
+    with st.container():
+        # 問題タイプを小さく表示
+        st.caption(f"【{current_question.quiz_type.value}】")
+        
+        # 問題文を大きく目立つように表示
+        st.markdown(f"""
+        <div style="background-color: #f0f8ff; padding: 20px; border-radius: 10px; margin: 10px 0;">
+            <h2 style="color: #333; text-align: center; margin: 0;">
+                {current_question.question_text}
+            </h2>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # 歌番号を表示
+        st.caption(f"（{current_question.poem_number}番の歌より）")
+    
+    st.markdown("---")
+    
+    # 3. 回答エリア
     if not st.session_state.answered:
-        # 回答選択エリア
-        st.markdown("### 📝 回答を選択してください")
+        # === 回答前の表示 ===
+        st.markdown("### 選択肢から回答を選んでください")
         
-        selected_choice = ui.render_choice_buttons(
-            choices=current_question.choices,
-            answered=False
-        )
+        # 選択肢を表示
+        selected = None
+        for i, choice in enumerate(current_question.choices):
+            # ボタンとして選択肢を表示
+            if st.button(
+                f"{i+1}. {choice}",
+                key=f"choice_btn_{i}",
+                use_container_width=True,
+                type="secondary" if st.session_state.user_answer != i else "primary"
+            ):
+                st.session_state.user_answer = i
+                st.rerun()
         
-        if selected_choice is not None:
-            st.session_state.user_answer = selected_choice
+        # 選択状態を表示
+        if st.session_state.user_answer is not None:
+            st.info(f"✅ 選択中: {st.session_state.user_answer + 1}番「{current_question.choices[st.session_state.user_answer]}」")
         
-        # 回答ボタン
+        # アクションボタン
         st.markdown("---")
-        button_action = ui.render_answer_buttons(
-            enable_hint=quiz_session.settings.enable_hints and not st.session_state.hint_used,
-            enable_skip=True
-        )
+        col1, col2, col3 = st.columns(3)
         
-        if button_action == 'answer' and st.session_state.user_answer is not None:
-            # 回答処理
-            time_taken = time.time() - st.session_state.question_start_time
-            question_id = f"{current_question.poem_number}_{current_question.quiz_type.value}"
-            
-            result = st.session_state.answer_validator.check_answer(
-                question_id=question_id,
-                poem_number=current_question.poem_number,
-                question_text=current_question.question_text,
-                correct_answer=current_question.correct_answer,
-                correct_index=current_question.correct_answer_index,
-                user_answer=current_question.choices[st.session_state.user_answer],
-                answer_index=st.session_state.user_answer,
-                time_taken=time_taken,
-                hint_used=st.session_state.hint_used
-            )
-            
-            sm.record_answer(
-                poem_number=current_question.poem_number,
-                question=current_question.question_text,
-                correct_answer=current_question.correct_answer,
-                user_answer=current_question.choices[st.session_state.user_answer],
-                time_taken=time_taken
-            )
-            
-            st.session_state.answered = True
-            st.session_state.current_answer_result = result
-            st.rerun()
-            
-        elif button_action == 'hint':
+        with col1:
+            if quiz_session.settings.enable_hints and not st.session_state.hint_used:
+                if st.button("💡 ヒント", use_container_width=True):
+                    st.session_state.hint_used = True
+                    st.rerun()
+        
+        with col2:
+            if st.button("⏭️ スキップ", use_container_width=True):
+                # スキップ処理
+                time_taken = time.time() - st.session_state.question_start_time
+                question_id = f"{current_question.poem_number}_{current_question.quiz_type.value}"
+                
+                result = st.session_state.answer_validator.check_answer(
+                    question_id=question_id,
+                    poem_number=current_question.poem_number,
+                    question_text=current_question.question_text,
+                    correct_answer=current_question.correct_answer,
+                    correct_index=current_question.correct_answer_index,
+                    user_answer=None,
+                    answer_index=None,
+                    time_taken=time_taken,
+                    hint_used=False
+                )
+                
+                sm.record_answer(
+                    poem_number=current_question.poem_number,
+                    question=current_question.question_text,
+                    correct_answer=current_question.correct_answer,
+                    user_answer=None,
+                    time_taken=time_taken
+                )
+                
+                st.session_state.answered = True
+                st.session_state.user_answer = None
+                st.session_state.current_answer_result = result
+                st.rerun()
+        
+        with col3:
+            if st.button(
+                "📝 回答する",
+                use_container_width=True,
+                type="primary",
+                disabled=(st.session_state.user_answer is None)
+            ):
+                if st.session_state.user_answer is not None:
+                    # 回答処理
+                    time_taken = time.time() - st.session_state.question_start_time
+                    question_id = f"{current_question.poem_number}_{current_question.quiz_type.value}"
+                    
+                    result = st.session_state.answer_validator.check_answer(
+                        question_id=question_id,
+                        poem_number=current_question.poem_number,
+                        question_text=current_question.question_text,
+                        correct_answer=current_question.correct_answer,
+                        correct_index=current_question.correct_answer_index,
+                        user_answer=current_question.choices[st.session_state.user_answer],
+                        answer_index=st.session_state.user_answer,
+                        time_taken=time_taken,
+                        hint_used=st.session_state.hint_used
+                    )
+                    
+                    sm.record_answer(
+                        poem_number=current_question.poem_number,
+                        question=current_question.question_text,
+                        correct_answer=current_question.correct_answer,
+                        user_answer=current_question.choices[st.session_state.user_answer],
+                        time_taken=time_taken
+                    )
+                    
+                    st.session_state.answered = True
+                    st.session_state.current_answer_result = result
+                    st.rerun()
+        
+        # ヒント表示
+        if st.session_state.hint_used:
             hint_text = generate_hint(current_question)
-            ui.render_hint_display(hint_text)
-            st.session_state.hint_used = True
-            
-        elif button_action == 'skip':
-            # スキップ処理
-            time_taken = time.time() - st.session_state.question_start_time
-            question_id = f"{current_question.poem_number}_{current_question.quiz_type.value}"
-            
-            result = st.session_state.answer_validator.check_answer(
-                question_id=question_id,
-                poem_number=current_question.poem_number,
-                question_text=current_question.question_text,
-                correct_answer=current_question.correct_answer,
-                correct_index=current_question.correct_answer_index,
-                user_answer=None,
-                answer_index=None,
-                time_taken=time_taken,
-                hint_used=False
-            )
-            
-            sm.record_answer(
-                poem_number=current_question.poem_number,
-                question=current_question.question_text,
-                correct_answer=current_question.correct_answer,
-                user_answer=None,
-                time_taken=time_taken
-            )
-            
-            st.session_state.answered = True
-            st.session_state.user_answer = None
-            st.session_state.current_answer_result = result
-            st.rerun()
+            st.info(f"💡 ヒント: {hint_text}")
     
-    # 回答済みの場合
     else:
-        # 結果表示エリア
-        st.markdown("### 📊 回答結果")
+        # === 回答後の表示 ===
+        st.markdown("### 回答結果")
         
-        # 選択肢を結果表示モードで表示
-        ui.render_choice_buttons(
-            choices=current_question.choices,
-            correct_index=current_question.correct_answer_index,
-            user_answer_index=st.session_state.user_answer,
-            answered=True
-        )
-        
+        # 結果メッセージ
         if hasattr(st.session_state, 'current_answer_result'):
             result = st.session_state.current_answer_result
             
-            # 結果表示
-            st.markdown("---")
-            ui.render_answer_result(
-                is_correct=result.is_correct,
-                user_answer=result.user_answer if result.user_answer else "未回答",
-                correct_answer=result.correct_answer,
-                points=result.points,
-                time_taken=result.time_taken,
-                explanation=current_question.explanation if quiz_session.settings.show_explanations else None
-            )
+            if result.is_correct:
+                st.success("🎉 正解です！")
+            elif result.user_answer is None:
+                st.warning("⏭️ スキップしました")
+            else:
+                st.error("❌ 不正解です")
+        
+        # 選択肢と結果を表示
+        for i, choice in enumerate(current_question.choices):
+            if i == current_question.correct_answer_index:
+                st.success(f"✅ {i+1}. {choice} 【正解】")
+            elif i == st.session_state.user_answer:
+                st.error(f"❌ {i+1}. {choice} 【あなたの回答】")
+            else:
+                st.write(f"　 {i+1}. {choice}")
+        
+        # 詳細結果
+        if hasattr(st.session_state, 'current_answer_result'):
+            result = st.session_state.current_answer_result
             
-            # 次へ進むボタン
             st.markdown("---")
-            if ui.render_next_question_button(is_last_question=(answered_count + 1 >= total_questions)):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("獲得ポイント", f"{result.points}点")
+            with col2:
+                st.metric("回答時間", f"{result.time_taken:.1f}秒")
+            
+            # 解説（設定で有効な場合）
+            if quiz_session.settings.show_explanations and current_question.explanation:
+                st.info(f"📚 解説: {current_question.explanation}")
+        
+        # 次へボタン（大きく目立つように）
+        st.markdown("---")
+        
+        is_last = (answered_count + 1 >= total_questions)
+        button_text = "🏁 結果を見る" if is_last else "➡️ 次の問題へ"
+        
+        # 中央に大きなボタンを配置
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button(button_text, use_container_width=True, type="primary"):
                 # 状態をリセット
                 st.session_state.current_quiz_question = None
                 st.session_state.answered = False
@@ -983,43 +1050,24 @@ def show_quiz_screen():
                 if hasattr(st.session_state, 'current_answer_result'):
                     delattr(st.session_state, 'current_answer_result')
                 
-                # 最後の問題の場合は結果画面へ
-                if answered_count + 1 >= total_questions:
-                    # 直接結果画面へ遷移（complete_quiz()がエラーになるため）
+                # 遷移先を決定
+                if is_last:
                     try:
                         screen_manager.navigate_to('result')
                     except:
-                        # エラーの場合は直接遷移
                         navigate_with_transition('result', TransitionType.FADE)
-                else:
-                    # 次の問題へ（画面トップへのスクロール指示を含む）
-                    try:
-                        screen_manager.navigate_to_next_question()
-                    except:
-                        pass
-                
-                # ページトップへスクロールするフラグを設定
-                if 'scroll_to_top' not in st.session_state:
-                    st.session_state.scroll_to_top = True
                 
                 st.rerun()
     
-    # クイズ中断ボタン
+    # クイズ中断ボタン（最下部に小さく）
     st.markdown("---")
-    col1, col2, col3 = st.columns(3)
-    with col2:
-        if st.button("🚪 クイズを中断", type="secondary"):
-            if screen_manager.handle_quiz_interruption():
-                st.rerun()
-    
-    # JavaScriptでページトップへスクロール（新しい問題の場合）
-    if 'scroll_to_top' in st.session_state and st.session_state.scroll_to_top:
-        st.markdown("""
-        <script>
-        window.scrollTo(0, 0);
-        </script>
-        """, unsafe_allow_html=True)
-        st.session_state.scroll_to_top = False
+    with st.expander("オプション"):
+        if st.button("🚪 クイズを中断して終了", use_container_width=True):
+            try:
+                screen_manager.handle_quiz_interruption()
+            except:
+                navigate_with_transition('start', TransitionType.FADE)
+            st.rerun()
 
 def show_result_screen():
     """結果画面（通常版）"""
