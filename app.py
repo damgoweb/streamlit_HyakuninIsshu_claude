@@ -61,7 +61,7 @@ def show_quiz_screen():
     # ========================================
     
     # タイトル
-    st.title(f"問題 {answere#!/usr/bin/env python
+    st.title(f"問題 {answered_count + 1} / {total_questions}")#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 百人一首クイズアプリ - メインアプリケーション
