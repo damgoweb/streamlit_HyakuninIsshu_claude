@@ -1,4 +1,67 @@
-#!/usr/bin/env python
+def show_quiz_screen():
+    """クイズ画面（通常版）"""
+    sm = get_session_manager()
+    screen_manager = get_screen_manager()
+    quiz_session = sm.get_quiz_session()
+    
+    if not quiz_session:
+        st.error("クイズセッションが初期化されていません")
+        if st.button("🏠 スタート画面に戻る"):
+            try:
+                screen_manager.navigate_home()
+            except:
+                pass
+            st.rerun()
+        return
+    
+    # answer_validatorの確認
+    if not st.session_state.answer_validator:
+        st.session_state.answer_validator = AnswerValidator()
+    
+    # 進捗情報取得
+    validator_stats = st.session_state.answer_validator.get_current_score()
+    answered_count = validator_stats['total_questions']
+    total_questions = quiz_session.settings.total_questions
+    
+    # クイズが完了している場合
+    if answered_count >= total_questions:
+        st.success("🎉 クイズ完了！")
+        performance = st.session_state.answer_validator.get_statistics().get_performance_analysis()
+        st.info(f"🏆 最終成績: {performance['overall_grade']}")
+        
+        if st.button("結果を見る", type="primary"):
+            try:
+                screen_manager.navigate_to('result')
+            except:
+                navigate_with_transition('result', TransitionType.FADE)
+            st.rerun()
+        return
+    
+    # current_quiz_questionが存在しない場合は初期化
+    if 'current_quiz_question' not in st.session_state:
+        st.session_state.current_quiz_question = None
+    
+    # 現在の問題を取得または生成
+    if st.session_state.current_quiz_question is None:
+        question = generate_next_question()
+        if question:
+            st.session_state.current_quiz_question = question
+            st.session_state.answered = False
+            st.session_state.user_answer = None
+            st.session_state.question_start_time = time.time()
+            st.session_state.hint_used = False
+        else:
+            st.error("問題を生成できませんでした")
+            return
+    
+    current_question = st.session_state.current_quiz_question
+    
+    # ========================================
+    # 問題文を最初に表示（UIコンポーネント不使用）
+    # ========================================
+    
+    # タイトル
+    st.title(f"問題 {answere#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 百人一首クイズアプリ - メインアプリケーション
@@ -844,27 +907,29 @@ def show_quiz_screen():
     current_question = st.session_state.current_quiz_question
     
     # ========================================
-    # 最重要：問題文を一番最初に表示
+    # レイアウト：問題文 → ヘッダー → 選択肢の順
     # ========================================
     
-    # プログレス表示（シンプルに）
-    st.write(f"**問題 {answered_count + 1} / {total_questions}** (スコア: {validator_stats['correct_answers']}/{answered_count})")
+    # 1. まず問題文を表示（これが最上部）
+    ui.render_question_display(
+        question_text=current_question.question_text,
+        poem_number=current_question.poem_number,
+        additional_info=f"問題タイプ: {current_question.quiz_type.value}"
+    )
     
-    # 問題文を大きく表示
+    # 2. その後にヘッダー（進捗）を表示
+    ui.render_quiz_header(
+        current_question=answered_count + 1,
+        total_questions=total_questions,
+        score=validator_stats['correct_answers'],
+        accuracy=validator_stats['accuracy']
+    )
+    
     st.markdown("---")
-    st.markdown(f"## 📖 {current_question.question_text}")
-    st.caption(f"問題タイプ: {current_question.quiz_type.value} / {current_question.poem_number}番の歌")
-    st.markdown("---")
     
-    # ========================================
-    # 以下、回答部分
-    # ========================================
-    
-    # 回答済みでない場合
+    # 3. 回答エリア
     if not st.session_state.answered:
-        st.subheader("選択肢")
-        
-        # UIコンポーネントを使わず直接選択肢を表示
+        # 回答前の表示
         selected_choice = ui.render_choice_buttons(
             choices=current_question.choices,
             answered=False
@@ -945,8 +1010,6 @@ def show_quiz_screen():
     
     # 回答済みの場合
     else:
-        st.subheader("回答結果")
-        
         # 選択肢を結果表示モードで表示
         ui.render_choice_buttons(
             choices=current_question.choices,
