@@ -824,7 +824,12 @@ def show_quiz_screen():
         st.info(f"🏆 最終成績: {performance['overall_grade']}")
         
         if ui.render_next_question_button(is_last_question=True):
-            screen_manager.complete_quiz()
+            # 結果画面へ遷移（complete_quiz()がエラーになる可能性があるため直接遷移）
+            try:
+                screen_manager.navigate_to('result')
+            except:
+                # エラーの場合は直接遷移
+                navigate_with_transition('result', TransitionType.FADE)
             st.rerun()
         return
     
@@ -960,8 +965,6 @@ def show_quiz_screen():
             
             # 次へ進むボタン
             if ui.render_next_question_button(is_last_question=(answered_count + 1 >= total_questions)):
-                screen_manager.navigate_to_next_question()
-                
                 # 状態をリセット
                 st.session_state.current_quiz_question = None
                 st.session_state.answered = False
@@ -972,7 +975,15 @@ def show_quiz_screen():
                 
                 # 最後の問題の場合は結果画面へ
                 if answered_count + 1 >= total_questions:
-                    screen_manager.complete_quiz()
+                    # 直接結果画面へ遷移（complete_quiz()がエラーになるため）
+                    try:
+                        screen_manager.navigate_to('result')
+                    except:
+                        # エラーの場合は直接遷移
+                        navigate_with_transition('result', TransitionType.FADE)
+                else:
+                    # 次の問題へ
+                    screen_manager.navigate_to_next_question()
                 
                 st.rerun()
     
@@ -992,25 +1003,45 @@ def show_result_screen():
     if not st.session_state.answer_validator:
         ui.render_error_message("結果データがありません")
         if st.button("🏠 スタート画面に戻る"):
-            screen_manager.navigate_home()
+            try:
+                screen_manager.navigate_home()
+            except:
+                navigate_with_transition('start', TransitionType.FADE)
             st.rerun()
         return
     
-    # 統計情報取得
-    stats = st.session_state.answer_validator.get_statistics()
-    score_info = st.session_state.answer_validator.get_current_score()
+    # 統計情報取得（エラーハンドリング追加）
+    try:
+        stats = st.session_state.answer_validator.get_statistics()
+        score_info = st.session_state.answer_validator.get_current_score()
+    except Exception as e:
+        st.error(f"統計情報の取得に失敗しました: {e}")
+        if st.button("🏠 スタート画面に戻る"):
+            navigate_with_transition('start', TransitionType.FADE)
+            st.rerun()
+        return
     
-    # ヘッダー表示（キャッシュ利用）
-    optimized_update('result_header',
-                    lambda: ui.render_result_header(
-                        total_questions=stats.total_questions,
-                        correct_answers=stats.correct_answers,
-                        total_points=stats.total_points,
-                        accuracy=stats.accuracy,
-                        grade=score_info['grade']
-                    ),
-                    data=score_info,
-                    strategy=UpdateStrategy.CACHED)
+    # ヘッダー表示
+    try:
+        optimized_update('result_header',
+                        lambda: ui.render_result_header(
+                            total_questions=stats.total_questions,
+                            correct_answers=stats.correct_answers,
+                            total_points=stats.total_points,
+                            accuracy=stats.accuracy,
+                            grade=score_info['grade']
+                        ),
+                        data=score_info,
+                        strategy=UpdateStrategy.CACHED)
+    except:
+        # optimized_updateが使えない場合は直接表示
+        ui.render_result_header(
+            total_questions=stats.total_questions,
+            correct_answers=stats.correct_answers,
+            total_points=stats.total_points,
+            accuracy=stats.accuracy,
+            grade=score_info['grade']
+        )
     
     # 詳細統計
     detailed_stats = {
@@ -1047,10 +1078,23 @@ def show_result_screen():
     action = ui.render_action_buttons(has_wrong_answers=has_wrong)
     
     if action == 'home':
-        screen_manager.navigate_home()
+        try:
+            screen_manager.navigate_home()
+        except:
+            navigate_with_transition('start', TransitionType.FADE)
         st.rerun()
     elif action == 'restart':
-        screen_manager.restart_quiz()
+        try:
+            screen_manager.restart_quiz()
+        except:
+            # 手動でリスタート
+            st.session_state.current_quiz_question = None
+            st.session_state.answered = False
+            st.session_state.user_answer = None
+            st.session_state.hint_used = False
+            if st.session_state.answer_validator:
+                st.session_state.answer_validator.reset_statistics()
+            navigate_with_transition('quiz', TransitionType.SLIDE)
         st.rerun()
     elif action == 'review':
         navigate_with_transition('review', TransitionType.FADE)
