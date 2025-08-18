@@ -52,12 +52,36 @@ except ImportError as e:
     st.stop()
 
 # ページ設定
+# Secrets から取得（なければ環境変数 or デフォルト）
+BRANCH = st.secrets.get("BRANCH", os.getenv("BRANCH", "unknown"))
+
+
+# タブタイトルに表示
 st.set_page_config(
-    page_title="百人一首クイズアプリ",
+    page_title=f"({BRANCH})百人一首クイズ",
     page_icon="🎌",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+# ページ上部にラベル
+color = "green" if BRANCH == "main" else "orange"
+st.markdown(
+    f"""
+    <div style='background-color:{color};
+                padding:6px;
+                color:white;
+                font-weight:bold;
+                text-align:center;
+                border-radius:6px;
+                margin-bottom:10px;'>
+        Running on {BRANCH.upper()}
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+st.write("ここにアプリ本体が続きます。")
 
 # クイズモードのマッピング
 QUIZ_MODE_MAPPING = {
